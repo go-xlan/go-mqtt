@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"math/rand/v2"
 	"time"
 
@@ -8,9 +9,10 @@ import (
 	"github.com/go-xlan/go-mqtt/mqttgo"
 	"github.com/pkg/errors"
 	"github.com/yyle88/erero"
+	"github.com/yyle88/must"
+	"github.com/yyle88/neatjson/neatjsons"
 	"github.com/yyle88/rese"
 	"github.com/yyle88/zaplog"
-	"go.uber.org/zap"
 )
 
 func main() {
@@ -36,25 +38,36 @@ func main() {
 
 	client2 := rese.V1(mqttgo.NewClient(config, utils.NewUUID(), func(c mqttgo.Client, retryTimes uint64) (mqttgo.RetryType, error) {
 		token := c.Subscribe(topic, 1, func(client mqttgo.Client, message mqttgo.Message) {
-			zaplog.SUG.Debugln("subscribe-msg:", string(message.Payload()))
+			zaplog.SUG.Debugln("subscribe-msg:", neatjsons.SxB(message.Payload()))
 		})
-		if ok := token.Wait(); !ok {
-			return mqttgo.RetryTypeRetries, errors.New("subscribe-is-wrong")
+		tokenState, err := mqttgo.WaitToken(token)
+		if err != nil {
+			return mqttgo.RetryTypeRetries, errors.WithMessage(err, "subscribe-is-wrong")
 		}
+		must.Same(tokenState, mqttgo.TokenStateSuccess)
 		return mqttgo.RetryTypeSuccess, nil
 	}))
 	defer client2.Disconnect(500)
 
+	type MessageType struct {
+		A string
+		B int
+		C float64
+	}
+
 	for i := 0; i < 100; i++ {
-		content := time.Now().String()
-		zaplog.SUG.Debugln("publish-msg:", content)
-		token := client1.Publish(topic, 1, false, content)
-		if success := token.WaitTimeout(time.Second * 3); !success {
-			zaplog.LOG.Debug("publish-msg-timeout")
+		msg := &MessageType{
+			A: time.Now().String(),
+			B: i,
+			C: rand.Float64(),
 		}
-		if err := token.Error(); err != nil {
-			zaplog.LOG.Error("publish-msg", zap.Error(err))
-		}
+		contentBytes := rese.A1(json.Marshal(msg))
+
+		zaplog.SUG.Debugln("publish-msg:", neatjsons.SxB(contentBytes))
+
+		token := client1.Publish(topic, 1, false, contentBytes)
+		tokenState := rese.C1(mqttgo.CheckToken(token, time.Second*3))
+		must.Same(tokenState, mqttgo.TokenStateSuccess)
 		time.Sleep(time.Second)
 	}
 }
