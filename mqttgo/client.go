@@ -1,12 +1,9 @@
 package mqttgo
 
 import (
-	"time"
-
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/yyle88/erero"
 	"github.com/yyle88/must"
-	"github.com/yyle88/tern/zerotern"
 	"go.uber.org/zap"
 )
 
@@ -16,42 +13,17 @@ import (
 func NewClient(cfg *Config, clientID string, onConnects ...func(c mqtt.Client, retryTimes uint64) (RetryType, error)) (mqtt.Client, error) {
 	clientOptions := NewClientOptions(must.Full(cfg), clientID)
 	if len(onConnects) > 0 {
+		// 这里只是对 on-connect 做个简单的封装，直接用原版也是可以的，因为原版已经做的足够好也没什么可封装的
+		// 根据 https://github.com/eclipse-paho/paho.mqtt.golang/blob/35b84c5b6910d3125376886939d0b36a8284d22a/client.go#L614
+		// 这里 on-connect 是异步执行的
 		clientOptions.OnConnect = func(client mqtt.Client) {
 			log.DebugLog("client-connected-reconnected-run", zap.String("clientID", clientID))
-			for _, onceOnConnect := range onConnects {
-				runOnConnectWithRetries(client, onceOnConnect)
+			for _, onConnect := range onConnects {
+				OnConnectWithRetries(client, onConnect)
 			}
 		}
 	}
 	return NewClientConnect(clientOptions)
-}
-
-type RetryType string
-
-const (
-	RetryTypeUnknown RetryType = "unknown"
-	RetryTypeRetries RetryType = "retries"
-	RetryTypeTimeout RetryType = "timeout"
-	RetryTypeSuccess RetryType = "success"
-)
-
-func runOnConnectWithRetries(c mqtt.Client, onceOnConnect func(c mqtt.Client, retryTimes uint64) (RetryType, error)) {
-	for retryTimes := uint64(0); c.IsConnected(); retryTimes++ {
-		if action, err := onceOnConnect(c, retryTimes); err != nil {
-			action = zerotern.VV(action, RetryTypeUnknown)
-			switch action {
-			case RetryTypeUnknown, RetryTypeRetries:
-				log.ErrorLog("run-on-connect-with-retries", zap.String("action", string(action)), zap.Uint64("retry_times", retryTimes), zap.Error(err))
-				time.Sleep(time.Millisecond * 100)
-				continue
-			case RetryTypeTimeout, RetryTypeSuccess:
-				log.DebugLog("run-on-connect-with-retries", zap.String("action", string(action)), zap.Uint64("retry_times", retryTimes))
-				return
-			}
-		}
-		log.DebugLog("run-on-connect-success-done", zap.Uint64("retry_times", retryTimes))
-		return
-	}
 }
 
 func NewClientConnect(clientOptions *mqtt.ClientOptions) (mqtt.Client, error) {

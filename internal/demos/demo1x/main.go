@@ -4,7 +4,6 @@ import (
 	"math/rand/v2"
 	"time"
 
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/go-xlan/go-mqtt/internal/utils"
 	"github.com/go-xlan/go-mqtt/mqttgo"
 	"github.com/pkg/errors"
@@ -23,12 +22,11 @@ func main() {
 		Password:     "password",
 		OrderMatters: false,
 	}
-	onConnect := func(c mqtt.Client, retryTimes uint64) (mqttgo.RetryType, error) {
+	onConnect := func(c mqttgo.Client, retryTimes uint64) (mqttgo.RetryType, error) {
 		if retryTimes > 10 {
 			return mqttgo.RetryTypeTimeout, nil
 		}
 		if rand.IntN(100) >= 10 {
-			time.Sleep(time.Second * 3)
 			return mqttgo.RetryTypeUnknown, erero.New("random-rate-not-success")
 		}
 		return mqttgo.RetryTypeSuccess, nil
@@ -36,8 +34,8 @@ func main() {
 	client1 := rese.V1(mqttgo.NewClient(config, utils.NewUUID(), onConnect))
 	defer client1.Disconnect(500)
 
-	client2 := rese.V1(mqttgo.NewClient(config, utils.NewUUID(), func(c mqtt.Client, retryTimes uint64) (mqttgo.RetryType, error) {
-		token := c.Subscribe(topic, 1, func(client mqtt.Client, message mqtt.Message) {
+	client2 := rese.V1(mqttgo.NewClient(config, utils.NewUUID(), func(c mqttgo.Client, retryTimes uint64) (mqttgo.RetryType, error) {
+		token := c.Subscribe(topic, 1, func(client mqttgo.Client, message mqttgo.Message) {
 			zaplog.SUG.Debugln("subscribe-msg:", string(message.Payload()))
 		})
 		if ok := token.Wait(); !ok {
