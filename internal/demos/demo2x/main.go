@@ -7,6 +7,8 @@ import (
 
 	"github.com/go-xlan/go-mqtt/internal/utils"
 	"github.com/go-xlan/go-mqtt/mqttgo"
+	"github.com/pkg/errors"
+	"github.com/yyle88/erero"
 	"github.com/yyle88/must"
 	"github.com/yyle88/neatjson/neatjsons"
 	"github.com/yyle88/rese"
@@ -14,7 +16,7 @@ import (
 )
 
 func main() {
-	const mqttTopic = "mqtt-go-demo1-topic"
+	const mqttTopic = "mqtt-go-demo2-topic"
 
 	config := &mqttgo.Config{
 		BrokerServer: "ws://127.0.0.1:8083/mqtt",
@@ -22,8 +24,15 @@ func main() {
 		Password:     "password",
 		OrderMatters: false,
 	}
+
 	client1 := rese.V1(mqttgo.NewClientWithCallback(config, utils.NewUUID(), mqttgo.NewCallback().
 		OnConnect(func(c mqttgo.Client, retryTimes uint64) (mqttgo.CallbackState, error) {
+			if retryTimes > 10 {
+				return mqttgo.CallbackTimeout, nil
+			}
+			if rand.IntN(100) >= 10 {
+				return mqttgo.CallbackUnknown, erero.New("random-rate-not-success")
+			}
 			return mqttgo.CallbackSuccess, nil
 		}),
 	))
@@ -34,7 +43,11 @@ func main() {
 			token := c.Subscribe(mqttTopic, 1, func(client mqttgo.Client, message mqttgo.Message) {
 				zaplog.SUG.Debugln("subscribe-msg:", neatjsons.SxB(message.Payload()))
 			})
-			must.Same(rese.C1(mqttgo.CheckToken(token, time.Minute)), mqttgo.TokenStateSuccess)
+			tokenState, err := mqttgo.WaitToken(token)
+			if err != nil {
+				return mqttgo.CallbackRetries, errors.WithMessage(err, "subscribe-is-wrong")
+			}
+			must.Same(tokenState, mqttgo.TokenStateSuccess)
 			return mqttgo.CallbackSuccess, nil
 		}),
 	))
@@ -46,7 +59,7 @@ func main() {
 		C float64
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 100; i++ {
 		msg := &MessageType{
 			A: time.Now().String(),
 			B: i,

@@ -4,8 +4,8 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/go-xlan/go-mqtt/mqttgo"
 	"github.com/google/uuid"
-	"github.com/yyle88/erero"
 	"github.com/yyle88/must"
 	"github.com/yyle88/rese"
 	"github.com/yyle88/tern"
@@ -14,24 +14,25 @@ import (
 )
 
 func main() {
-	const topic = "sketch1_send_msg_topic"
+	const mqttTopic = "mqtt-go-sketch1-topic"
 
 	for i := 0; i < 10; i++ {
-		client := rese.V1(NewClient(NewClientOptions(func(client mqtt.Client) {
-			client.Subscribe(topic, 1, func(client mqtt.Client, message mqtt.Message) {
+		client := rese.V1(mqttgo.NewClient(NewClientOptions(func(client mqtt.Client) {
+			token := client.Subscribe(mqttTopic, 1, func(client mqtt.Client, message mqtt.Message) {
 				zaplog.SUG.Debugln("subscribe-msg:", string(message.Payload()))
 			})
+			must.Same(rese.C1(mqttgo.CheckToken(token, time.Minute)), mqttgo.TokenStateSuccess)
 		})))
 		must.True(client.IsConnected())
 	}
 
-	client := rese.V1(NewClient(NewClientOptions(nil)))
+	client := rese.V1(mqttgo.NewClient(NewClientOptions(nil)))
 	must.True(client.IsConnected())
 	defer client.Disconnect(250)
 	for i := 0; i < 100; i++ {
 		content := time.Now().String()
 		zaplog.SUG.Debugln("publish-msg:", content)
-		token := client.Publish(topic, 1, false, content)
+		token := client.Publish(mqttTopic, 1, false, content)
 		if ok := token.WaitTimeout(time.Second * 3); !ok {
 			zaplog.LOG.Debug("publish-msg-timeout")
 		}
@@ -40,17 +41,6 @@ func main() {
 		}
 		time.Sleep(time.Second)
 	}
-}
-
-func NewClient(opts *mqtt.ClientOptions) (mqtt.Client, error) {
-	client := mqtt.NewClient(opts)
-	token := client.Connect()
-	token.Wait()
-	err := token.Error()
-	if err != nil {
-		return nil, erero.Wro(err)
-	}
-	return client, nil
 }
 
 func NewClientOptions(onConnect func(client mqtt.Client)) *mqtt.ClientOptions {

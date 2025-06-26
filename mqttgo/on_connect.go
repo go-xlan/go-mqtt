@@ -8,26 +8,26 @@ import (
 	"go.uber.org/zap"
 )
 
-type RetryType string
+type CallbackState string
 
 const (
-	RetryTypeUnknown RetryType = "unknown"
-	RetryTypeRetries RetryType = "retries"
-	RetryTypeTimeout RetryType = "timeout"
-	RetryTypeSuccess RetryType = "success"
+	CallbackUnknown CallbackState = "unknown"
+	CallbackRetries CallbackState = "retries"
+	CallbackTimeout CallbackState = "timeout"
+	CallbackSuccess CallbackState = "success"
 )
 
-func OnConnectWithRetries(c mqtt.Client, onConnect func(c mqtt.Client, retryTimes uint64) (RetryType, error)) {
-	for retryTimes := uint64(0); c.IsConnected(); retryTimes++ {
-		action, err := onConnect(c, retryTimes)
+func OnConnectWithRetries(client mqtt.Client, onConnect func(client mqtt.Client, retryTimes uint64) (CallbackState, error)) {
+	for retryTimes := uint64(0); client.IsConnected(); retryTimes++ {
+		action, err := onConnect(client, retryTimes)
 		if err != nil {
-			action = zerotern.VV(action, RetryTypeUnknown)
+			action = zerotern.VV(action, CallbackUnknown)
 			switch action {
-			case RetryTypeUnknown, RetryTypeRetries:
+			case CallbackUnknown, CallbackRetries:
 				log.ErrorLog("run-on-connect-with-retries", zap.String("action", string(action)), zap.Uint64("retry_times", retryTimes), zap.Error(err))
 				time.Sleep(time.Millisecond * 100)
 				continue
-			case RetryTypeTimeout, RetryTypeSuccess:
+			case CallbackTimeout, CallbackSuccess:
 				log.DebugLog("run-on-connect-with-retries", zap.String("action", string(action)), zap.Uint64("retry_times", retryTimes))
 				return
 			}
